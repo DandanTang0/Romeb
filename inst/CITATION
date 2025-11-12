@@ -1,0 +1,45 @@
+# inst/CITATION  -- CRAN-compliant (uses bibentry, no packageDescription())
+
+pkg <- "Romeb"
+
+`%||%` <- function(a, b) {
+  if (!is.null(a) && length(a) > 0 && !is.na(a) && nzchar(a)) a else b
+}
+
+# Read DESCRIPTION without requiring the package to be installed
+read_meta <- function() {
+  fields <- c("Version", "Title", "Date", "Packaged")
+  for (p in c("DESCRIPTION", "../DESCRIPTION", "../../DESCRIPTION", "inst/../DESCRIPTION")) {
+    if (file.exists(p)) {
+      d <- try(read.dcf(p, fields = fields), silent = TRUE)
+      if (!inherits(d, "try-error") && is.matrix(d) && nrow(d) >= 1) {
+        return(d[1, , drop = TRUE])
+      }
+    }
+  }
+  NULL
+}
+
+meta  <- read_meta()
+vers  <- `%||%`(unname(meta["Version"]), "0.1.2")
+title_raw <- `%||%`(unname(meta["Title"]), "Robust Median-Based Bayesian Growth-Curve Modeling")
+date  <- `%||%`(unname(meta["Date"]), `%||%`(unname(meta["Packaged"]), format(Sys.Date())))
+year  <- substr(date, 1, 4)
+
+citHeader(sprintf("To cite %s in publications use:", pkg))
+
+bibentry(
+  bibtype = "Manual",
+  # Avoid double "Romeb: ..." by composing from the raw Title
+  title   = sprintf("%s: %s", pkg, title_raw),
+  author  = c(
+    person("Dandan", "Tang",
+           email = "tangdd20@gmail.com",
+           role  = c("aut", "cre"),
+           comment = c(ORCID = "0009-0007-3453-9660")),
+    person("Xin", "Tong", role = "aut")
+  ),
+  year = year,
+  note = sprintf("R package version %s. Source: https://github.com/DandanTang0/Romeb", vers),
+  url  = "https://CRAN.R-project.org/package=Romeb"
+)
