@@ -8,7 +8,7 @@
 #'   \code{MCAR}, \code{no missing}.
 #' @param data Matrix or data frame containing outcome columns (and
 #'   optionally auxiliary variables).
-#' @param Time Integer; number of measurement occasions.
+#' @param time Numeric vector of measurement times (e.g., c(0,1,2,3)).
 #' @param seed Integer seed for reproducibility.
 #' @param K Integer; number of auxiliary variables (default 0).
 #' @param chain Integer; number of MCMC chains (default 1).
@@ -28,7 +28,7 @@
 #' @examples
 #'   set.seed(123)
 #'   Y <- matrix(rnorm(300), 100, 3)
-#'   fit <- Romeb("no missing", data = Y, Time = 3, seed = 123, K = 0,
+#'   fit <- Romeb("no missing", data = Y, time = c(0,1,2), seed = 123, K = 0,
 #'                Niter = 6000, burnIn = 3000)
 #'   print(fit)
 
@@ -36,7 +36,7 @@
 
 Romeb <- function(Missing_Type,
                   data,
-                  Time,
+                  time,
                   seed,
                   K      = 0,
                   chain  = 1,
@@ -50,14 +50,24 @@ Romeb <- function(Missing_Type,
   if (!is.matrix(data) && !is.data.frame(data))
     stop("data must be a matrix or data.frame.")
   
-  if (Time <= 0 || Time != floor(Time))
-    stop("Time must be a positive integer.")
+  
+  # time: must be a non-empty numeric vector
+  if (!is.numeric(time) || length(time) < 1L)
+    stop("'time' must be a non-empty numeric vector, e.g., c(0,1,2,3).")
+  if (!all(is.finite(time)))
+    stop("'time' contains non-finite values (NA/NaN/Inf).")
+  
+  n_time  <- length(time)
+  tvec_in <- as.numeric(time)
   
   if (K < 0 || K != floor(K))
     stop("K must be a non-negative integer.")
   
-  if (K + Time > ncol(data))
-    stop("data does not have enough columns for K + Time variables.")
+  if (K + n_time > ncol(data))
+    stop("data does not have enough columns for K + length(time) variables.")
+  
+  if (K == 0 && ncol(data) != n_time)
+    stop("With K = 0, 'data' must have exactly length(time) outcome columns.")
   
   
   set.seed(seed)
@@ -65,9 +75,9 @@ Romeb <- function(Missing_Type,
   N   <- nrow(data)
   initial <- list(".RNG.name" = "base::Wichmann-Hill",
                   ".RNG.seed" = seed)
-  
+  Time <- length(time)
   if (K == 0) {
-    dat <- list(N = N, y = data, tau = tau, Time = Time)
+    dat <- list(N = N, y = data, tau = tau, Time = n_time, time=tvec_in)
     
     model_string <- switch(Missing_Type,
                            "MNAR"       = model_MNAR,
@@ -77,11 +87,11 @@ Romeb <- function(Missing_Type,
     message("\nRunning ", Missing_Type, " model  (K = 0)")
   } else {
     X_part <- data[, 1:K, drop = FALSE]
-    Y_part <- data[, (K+1):(K+Time), drop = FALSE]
+    Y_part <- data[, (K+1):(K+n_time), drop = FALSE]
     dat <- list(N = N, y = Y_part, tau = tau,
-                K = K, X = X_part, Time = Time)
+                K = K, X = X_part, Time = n_time, time=tvec_in)
     
-   
+    
     model_string <- model_MNAR_k
     message("\nRunning ", Missing_Type,
             " model  (K = ", K, " auxiliary vars)")
@@ -137,160 +147,4 @@ print.RomebResult <- function(x, ...) {
   invisible(x)
 }
 
-
-#' @export
-model <- "model {
-  for (i in 1:N)  {
-    for(t in 1:Time) {
-      V[i,t] ~ dexp(pre_sigma)
-      y[i,t] ~ dnorm(muy[i,t], pre_sig2[i,t])
-      muy[i,t] <- LS[i,1]+(t-1)*LS[i,2] + zeta*V[i,t]
-      pre_sig2[i,t]<- 1/sig2_y[i,t]
-      sig2_y[i,t] <- eta^2*V[i,t]/pre_sigma
-      loglik[i,t] <- logdensity.norm(y[i,t], muy[i,t], pre_sig2[i,t])
-    }
-    LS[i,1:2]  ~ dmnorm(muLS[1:2], Inv_cov[1:2,1:2])
-  }
-  zeta <- (1-2*tau)/(tau*(1-tau))
-  eta <- sqrt(2/(tau*(1-tau)))
-  
-  pre_sigma ~ dgamma(.001, .001)
-  sigma <- 1/pre_sigma
-
-  muLS[1] ~ dnorm(0, 0.001)
-  muLS[2] ~ dnorm(0, 0.001)
-
-  Inv_cov[1:2,1:2] ~ dwish(R[1:2,1:2], 3)
-  Cov_b <- inverse(Inv_cov[1:2,1:2])
-  
-  R[1,1] <- 1
-  R[2,2] <- 1
-  R[2,1] <- R[1,2]
-  R[1,2] <- 0
-
-  par[1] <- muLS[1]
-  par[2] <- muLS[2]
-  par[3] <- Cov_b[1,1]
-  par[4] <- Cov_b[1,2]
-  par[5] <- Cov_b[2,2]
-}"
-
-#' @export
-model_MNAR <- "model {
-  for (i in 1:N)  {
-    for(t in 1:Time) {
-      V[i,t] ~ dexp(pre_sigma)
-      y[i,t] ~ dnorm(muy[i,t], pre_sig2[i,t])
-      muy[i,t] <- LS[i,1]+(t-1)*LS[i,2] + zeta*V[i,t]
-      pre_sig2[i,t]<- 1/sig2_y[i,t]
-      sig2_y[i,t] <- eta^2*V[i,t]/pre_sigma
-      loglik[i,t] <- logdensity.norm(y[i,t], muy[i,t], pre_sig2[i,t])
-    }
-    LS[i,1:2]  ~ dmnorm(muLS[1:2], Inv_cov[1:2,1:2])
-  }
-
-  zeta <- (1-2*tau)/(tau*(1-tau))
-  eta <- sqrt(2/(tau*(1-tau)))
-
-  for(i in 1:N){
-    for(t in 2:Time){
-      m[i,t] ~ dbern(q[i,t])
-      logit(q[i,t]) <-  r0 + r1*y[i,(t-1)] + r2*y[i,t]
-    }
-  }
-
-  r0  ~ dnorm(0, 0.001)
-  r1  ~ dnorm(0, 0.001)
-  r2  ~ dnorm(0, 0.001)
-
-  pre_sigma ~ dgamma(.001, .001)
-  sigma <- 1/pre_sigma
-
-  muLS[1] ~ dnorm(0, 0.001)
-  muLS[2] ~ dnorm(0, 0.001)
-
-  Inv_cov[1:2,1:2] ~ dwish(R[1:2,1:2], 3)
-  Cov_b <- inverse(Inv_cov[1:2,1:2])
-  
-  R[1,1] <- 1
-  R[2,2] <- 1
-  R[2,1] <- R[1,2]
-  R[1,2] <- 0
-
-  par[1] <- muLS[1]
-  par[2] <- muLS[2]
-  par[3] <- Cov_b[1,1]
-  par[4] <- Cov_b[1,2]
-  par[5] <- Cov_b[2,2]
-  par[6] <- r0
-  par[7] <- r1
-  par[8] <- r2
-}"
-
-#' @export
-model_MNAR_k <- "
-model {
-  for (i in 1:N) {
-    for(t in 1:Time) {
-      V[i,t] ~ dexp(pre_sigma)
-      
-      y[i,t] ~ dnorm(muy[i,t], pre_sig2[i,t])
-      
-      muy[i,t]      <- LS[i,1] + (t-1)*LS[i,2] + zeta*V[i,t]
-      pre_sig2[i,t] <- 1/sig2_y[i,t]
-      sig2_y[i,t]   <- eta^2 * V[i,t] / pre_sigma
-      
-      loglik[i,t]   <- logdensity.norm(y[i,t], muy[i,t], pre_sig2[i,t])
-    }
-    
-    LS[i,1:2]  ~ dmnorm(muLS[1:2], Inv_cov[1:2,1:2])
-  }
-
-  for(i in 1:N){
-    for(t in 2:Time){
-      m[i,t] ~ dbern(q[i,t])
-      # logit(q[i,t]) = r0 + r1*y[i,(t-1)] + r2*y[i,t] + inprod( beta_aux[], X[i,] )
-      logit(q[i,t]) <- r0 + r1*y[i,(t-1)] + r2*y[i,t] + inprod(beta_aux[], X[i,])
-    }
-  }
-
-  zeta <- (1 - 2*tau) / (tau*(1 - tau))
-  eta  <- sqrt(2 / (tau*(1 - tau)))
-
-  r0 ~ dnorm(0, 0.001)
-  r1 ~ dnorm(0, 0.001)
-  r2 ~ dnorm(0, 0.001)
-  
-  for(k in 1:K){
-    beta_aux[k] ~ dnorm(0, 0.001)
-  }
-
-  pre_sigma ~ dgamma(0.001, 0.001)
-  sigma <- 1 / pre_sigma
-
-  muLS[1] ~ dnorm(0, 0.001)
-  muLS[2] ~ dnorm(0, 0.001)
-  
-  Inv_cov[1:2,1:2] ~ dwish(R[1:2,1:2], 3)
-  Cov_b <- inverse(Inv_cov[1:2,1:2])
-  
-  R[1,1] <- 1
-  R[2,2] <- 1
-  R[1,2] <- 0
-  R[2,1] <- R[1,2]
-
-  par[1] <- muLS[1]
-  par[2] <- muLS[2]
-  par[3] <- Cov_b[1,1]
-  par[4] <- Cov_b[1,2]
-  par[5] <- Cov_b[2,2]
-  par[6] <- r0
-  par[7] <- r1
-  par[8] <- r2
-
-  for(k in 1:K){
-    par[8 + k] <- beta_aux[k]
-  }
-}
-"
 
