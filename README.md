@@ -4,11 +4,10 @@
 
 ## 📦 Installation
 
-You can install the development version of `Romeb` from GitHub:
+You can install the development version of `Romeb` from CRAN:
 
 ```r
-install.packages("devtools")
-devtools::install_github("DandanTang0/Romeb")
+install.packages("Romeb")
 ```
 
 ## 🚀 Usage
